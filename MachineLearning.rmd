@@ -1,0 +1,138 @@
+---
+title: "Study of personal movement using activity monitoring"
+author: "Jorge Irazabal"
+date: "Friday, May 22, 2015"
+output:
+  html_document:
+    keep_md: yes
+---
+# Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+# Data
+
+The training data for this project are available here: [Training Data](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+The test data are available here: [Test](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+## Loading and cleanind data
+
+First we go to load the data and clean it
+
+```{r}
+# download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv','training.csv')
+training <- read.csv('training.csv')
+
+# download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv','testing.csv')
+testing <- read.csv('testing.csv')
+
+dim(training)
+```
+
+The training data has 19622 observations and 160 features
+
+```{r}
+library(caret)
+
+# Quit irrevelant columns, the first seven columns :user_name raw_timestamp_part_1 raw_timestamp_part_2   cvtd_timestamp new_window num_window
+training <- training[,-c(1:7)]
+testing <- testing[,-c(1:7)]
+# Delete columns with all missing values
+training<-training[,colSums(is.na(training)) == 0]
+# Delete near zero variance columns
+nzvColums <- nearZeroVar(training)
+training <- training[, -nzvColums]
+dim(training)
+```
+
+After quit irrevelant and null columns, we have 53 valid features.
+
+Now, let's partition training data for cross-validation (60% for training and 40% for test)
+```{r}
+#random seed
+set.seed(123456)
+
+trainingPartition <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+trainingTrain <- training[trainingPartition, ] 
+trainingTest <- training[-trainingPartition, ]
+
+# Data distribution by classe
+plot(training$classe, main="Training data distribution by classe", 
+     xlab="Classe", ylab="Count", col="red")
+```
+
+# Prediction Models
+
+We use two different prediction methods: Decision Tree and Random Forest
+
+## Decision Tree
+```{r}
+# Load libraries
+library(rpart) 
+library(rattle)
+
+library(parallel)
+library(doParallel)
+
+#parallel computing for multi-core
+registerDoParallel(makeCluster(detectCores()))
+
+modelTree <- train(classe ~ .,method="rpart",data=trainingTrain)
+print(modelTree$finalModel)
+predictTree <- predict(modelTree, trainingTest)
+
+# Plot of the Decision Tree
+fancyRpartPlot(modelTree$finalModel)
+
+# Show Results
+confusionMatrix(predictTree, trainingTest$classe)
+
+# Predict with testin data
+predictTree <- predict(modelTree, testing)
+# Show Results
+print(predictTree)
+```
+## Random Forest
+```{r}
+
+# The tree is limited to 100 because the performace is veru slow
+modelForest <- train(classe ~ .,method="rf",data=trainingTrain,ntree=100)
+
+print(modelForest)
+
+# Predicting:
+predictForest <- predict(modelForest, trainingTest)
+
+# Show Results
+confusionMatrix(predictForest, trainingTest$classe)
+
+# Predict with testin data
+predictForest <- predict(modelForest, testing)
+# Show Results
+print(predictForest)
+```
+
+## Conclusion
+
+Random Forest algorithm performed better than Decision Trees.
+Accuracy for Random Forest model was 0.99 (95% CI: (0.99, 0.99)) compared to 0.48 (95% CI: (0.47, 0.5)) for Decision Tree model.
+
+The Confusion Matrix show that the Random Forest algorithm for each of the values is very approximate , whereas in the case of the Decision Tree, values are widely scattered
+
+Also in case of the Decision Tree model the prediction always has the values A and C, which is not possible , viewing data distribution
+
+# Prediction Assignment Submission
+We use the random Forest algorithm with the testing data
+```{r}
+# Write files for submission
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predictForest)
+```
